@@ -1,0 +1,9 @@
+yt-dlp
+groq
+requests
+soundfile
+numpy
+demucs
+tqdm
+colorama
+

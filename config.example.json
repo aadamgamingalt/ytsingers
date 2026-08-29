@@ -1,0 +1,11 @@
+{
+  "groq_api_key": "YOUR_GROQ_KEY_HERE",
+  "channels": [
+    "https://www.youtube.com/@ExampleChannel1",
+    "https://www.youtube.com/@ExampleChannel2"
+  ],
+  "output_dir": "output",
+  "temp_dir": "temp",
+  "word_window_seconds": 5
+}
+

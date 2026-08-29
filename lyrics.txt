@@ -1,0 +1,5 @@
+# Paste your song lyrics here, one line per line
+# The script reads every word automatically
+Never gonna give you up
+Never gonna let you down
+

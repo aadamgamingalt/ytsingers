@@ -1,0 +1,41 @@
+name: Build audio_engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:cpkg
+          C:cpkgootstrap-vcpkg.bat
+
+      - name: Install dependencies via vcpkg
+        run: |
+          C:cpkgcpkg install libsndfile:x64-windows-static rubberband:x64-windows-static
+
+      - name: Configure CMake
+        run: |
+          cmake -B build audio_engine `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio_engine-windows-x64
+          path: build/Release/audio_engine.exe
+          retention-days: 30
+
