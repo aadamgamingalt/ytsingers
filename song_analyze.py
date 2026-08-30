@@ -18,7 +18,6 @@ def hz_to_midi(hz):
 
 
 def extract_melody(audio_path):
-    """Extract F0 over time using aubio if available, else fallback."""
     audio, sr = sf.read(audio_path)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
@@ -66,7 +65,9 @@ def get_pitch_at_time(times, pitches, t):
 def transcribe_song(audio_path, groq_api_key):
     """Run Groq Whisper on the song to get word timestamps."""
     print("  Transcribing song with Groq Whisper...")
+
     with open(audio_path, "rb") as f:
+        # Send as multipart - timestamp_granularities[] needs to be sent as a list
         response = requests.post(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {groq_api_key}"},
@@ -74,13 +75,41 @@ def transcribe_song(audio_path, groq_api_key):
             data={
                 "model": "whisper-large-v3",
                 "response_format": "verbose_json",
-                "response_format": "verbose_json",
+                "timestamp_granularities[]": "word",
                 "language": "en"
             }
         )
+
     if response.status_code != 200:
         raise RuntimeError(f"Groq transcription failed: {response.text}")
-    return response.json()
+
+    data = response.json()
+    print(f"  Response keys: {list(data.keys())}")
+
+    # Groq may return words at top level or nested under segments
+    words = data.get("words", [])
+    if not words:
+        # Try extracting from segments
+        for seg in data.get("segments", []):
+            for w in seg.get("words", []):
+                words.append(w)
+
+    if not words:
+        # Fallback: split text evenly across the audio duration
+        print("  No word timestamps from Groq, falling back to even split...")
+        text = data.get("text", "")
+        duration = data.get("duration", 240.0)
+        raw_words = text.split()
+        if raw_words:
+            dur_per_word = duration / len(raw_words)
+            for i, w in enumerate(raw_words):
+                words.append({
+                    "word": w,
+                    "start": i * dur_per_word,
+                    "end": (i + 1) * dur_per_word
+                })
+
+    return words
 
 
 def analyze_song(song_path, groq_api_key, temp_dir):
@@ -91,21 +120,24 @@ def analyze_song(song_path, groq_api_key, temp_dir):
     print("  Extracting melody from song...")
     melody_times, melody_pitches, sr = extract_melody(song_path)
 
-    transcript = transcribe_song(song_path, groq_api_key)
+    words = transcribe_song(song_path, groq_api_key)
 
     word_data = []
-    for w in transcript.get("words", []):
+    for w in words:
         t = w["start"]
         dur = w["end"] - w["start"]
         hz = get_pitch_at_time(melody_times, melody_pitches, t + dur / 2)
         midi = hz_to_midi(hz)
-        word_data.append({
-            "word": w["word"].strip().lower().replace(",", "").replace(".", "").replace("'", ""),
-            "time_in_song": t,
-            "duration": dur,
-            "target_hz": hz,
-            "target_midi": midi
-        })
+        clean = w["word"].strip().lower()
+        clean = "".join(c for c in clean if c.isalpha())
+        if clean:
+            word_data.append({
+                "word": clean,
+                "time_in_song": t,
+                "duration": dur,
+                "target_hz": hz,
+                "target_midi": midi
+            })
 
     print(f"  Got {len(word_data)} words from song")
     return word_data
