@@ -13,21 +13,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache vcpkg
-        uses: actions/cache@v4
-        with:
-          path: C:/vcpkg/installed
-          key: vcpkg-x64-windows-static-rubberband-sndfile
-
-      - name: Install vcpkg dependencies
+      - name: Install libsndfile via vcpkg
         shell: pwsh
         run: |
           cd C:/vcpkg
-          git pull
-          ./bootstrap-vcpkg.bat
-          ./vcpkg integrate install
-          ./vcpkg install libsndfile:x64-windows-static
-          ./vcpkg install rubberband:x64-windows-static
+          git pull --quiet
+          ./bootstrap-vcpkg.bat -disableMetrics | Out-Null
+          ./vcpkg install libsndfile:x64-windows-static --no-print-usage
+
+      - name: Download Rubber Band prebuilt
+        shell: pwsh
+        run: |
+          # Download rubberband Windows SDK from GitHub releases
+          $url = "https://github.com/breakfastquay/rubberband/archive/refs/tags/v3.3.0.zip"
+          Invoke-WebRequest -Uri $url -OutFile rubberband-src.zip
+          Expand-Archive rubberband-src.zip -DestinationPath .
+          Rename-Item rubberband-3.3.0 rubberband-src
+          # Build rubberband with MSVC (single-file build)
+          cd rubberband-src
+          # Use the bundled single-file build
+          cmake -B rb_build -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE/rubberband-install"
+          cmake --build rb_build --config Release
+          cmake --install rb_build --config Release
 
       - name: Configure CMake
         shell: pwsh
@@ -35,7 +44,9 @@ jobs:
           cmake -B build audio_engine `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DRUBBERBAND_INCLUDE_DIR="$env:GITHUB_WORKSPACE/rubberband-install/include" `
+            -DRUBBERBAND_LIBRARY="$env:GITHUB_WORKSPACE/rubberband-install/lib/rubberband.lib"
 
       - name: Build
         shell: pwsh
