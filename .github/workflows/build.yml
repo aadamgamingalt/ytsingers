@@ -21,22 +21,21 @@ jobs:
           ./bootstrap-vcpkg.bat -disableMetrics | Out-Null
           ./vcpkg install libsndfile:x64-windows-static --no-print-usage
 
-      - name: Download Rubber Band prebuilt
+      - name: Download Rubber Band Windows SDK
         shell: pwsh
         run: |
-          # Download rubberband Windows SDK from GitHub releases
-          $url = "https://github.com/breakfastquay/rubberband/archive/refs/tags/v3.3.0.zip"
-          Invoke-WebRequest -Uri $url -OutFile rubberband-src.zip
-          Expand-Archive rubberband-src.zip -DestinationPath .
-          Rename-Item rubberband-3.3.0 rubberband-src
-          # Build rubberband with MSVC (single-file build)
-          cd rubberband-src
-          # Use the bundled single-file build
-          cmake -B rb_build -DCMAKE_BUILD_TYPE=Release `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE/rubberband-install"
-          cmake --build rb_build --config Release
-          cmake --install rb_build --config Release
+          # Official prebuilt Windows SDK from breakfastquay
+          $url = "https://breakfastquay.com/files/releases/rubberband-3.3.0-gpl-executable-windows.zip"
+          try {
+            Invoke-WebRequest -Uri $url -OutFile rb.zip -ErrorAction Stop
+            Expand-Archive rb.zip -DestinationPath rb_sdk
+          } catch {
+            # Fallback: build minimal version using vcpkg with fftw
+            Write-Host "Prebuilt not available, installing via vcpkg with fftw..."
+            cd C:/vcpkg
+            ./vcpkg install fftw3:x64-windows-static
+            ./vcpkg install rubberband:x64-windows-static --no-print-usage
+          }
 
       - name: Configure CMake
         shell: pwsh
@@ -44,9 +43,7 @@ jobs:
           cmake -B build audio_engine `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
-            -DRUBBERBAND_INCLUDE_DIR="$env:GITHUB_WORKSPACE/rubberband-install/include" `
-            -DRUBBERBAND_LIBRARY="$env:GITHUB_WORKSPACE/rubberband-install/lib/rubberband.lib"
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
       - name: Build
         shell: pwsh
