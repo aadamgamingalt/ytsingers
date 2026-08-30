@@ -13,24 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install vcpkg
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git C:cpkg
-          C:cpkgootstrap-vcpkg.bat
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
-      - name: Install dependencies via vcpkg
-        run: |
-          C:cpkgcpkg install libsndfile:x64-windows-static rubberband:x64-windows-static
+      - name: Install dependencies
+        run: vcpkg install libsndfile:x64-windows-static rubberband:x64-windows-static
+        shell: cmd
 
       - name: Configure CMake
         run: |
-          cmake -B build audio_engine `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          cmake -B build audio_engine -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+        shell: pwsh
 
       - name: Build
         run: cmake --build build --config Release
+        shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -38,4 +37,3 @@ jobs:
           name: audio_engine-windows-x64
           path: build/Release/audio_engine.exe
           retention-days: 30
-
