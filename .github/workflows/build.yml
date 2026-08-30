@@ -13,34 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies via vcpkg
-        shell: pwsh
-        env:
-          VCPKG_DEFAULT_TRIPLET: x64-windows-static
-        run: |
-          # Use the vcpkg already on the runner - no git pull, no bootstrap
-          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
-          echo "vcpkg root: $env:VCPKG_ROOT"
-          & "$env:VCPKG_ROOT/vcpkg" install libsndfile:x64-windows-static fftw3:x64-windows-static rubberband:x64-windows-static
-
-      - name: Diagnose vcpkg outputs
+      - name: Install libsndfile via vcpkg
         shell: pwsh
         run: |
-          $root = $env:VCPKG_INSTALLATION_ROOT
-          echo "=== Rubberband includes ==="
-          Get-ChildItem "$root/installed/x64-windows-static/include" -Recurse -Filter "*rubber*" -ErrorAction SilentlyContinue | Select-Object FullName
-          echo "=== Rubberband libs ==="
-          Get-ChildItem "$root/installed/x64-windows-static/lib" -Filter "*rubber*" -ErrorAction SilentlyContinue | Select-Object FullName
-          echo "=== SndFile includes ==="
-          Get-ChildItem "$root/installed/x64-windows-static/include" -Filter "*snd*" -ErrorAction SilentlyContinue | Select-Object FullName
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          & "$vcpkg/vcpkg" install libsndfile:x64-windows-static
 
       - name: Configure CMake
         shell: pwsh
         run: |
-          $root = $env:VCPKG_INSTALLATION_ROOT
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
           cmake -B build audio_engine `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="$root/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_TOOLCHAIN_FILE="$vcpkg/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
       - name: Build
