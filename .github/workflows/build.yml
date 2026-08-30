@@ -13,29 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install libsndfile via vcpkg
+      - name: Install dependencies via vcpkg
         shell: pwsh
         run: |
           cd C:/vcpkg
           git pull --quiet
           ./bootstrap-vcpkg.bat -disableMetrics | Out-Null
-          ./vcpkg install libsndfile:x64-windows-static --no-print-usage
+          ./vcpkg install libsndfile:x64-windows-static fftw3:x64-windows-static rubberband:x64-windows-static --no-print-usage
 
-      - name: Download Rubber Band Windows SDK
+      - name: Diagnose vcpkg outputs
         shell: pwsh
         run: |
-          # Official prebuilt Windows SDK from breakfastquay
-          $url = "https://breakfastquay.com/files/releases/rubberband-3.3.0-gpl-executable-windows.zip"
-          try {
-            Invoke-WebRequest -Uri $url -OutFile rb.zip -ErrorAction Stop
-            Expand-Archive rb.zip -DestinationPath rb_sdk
-          } catch {
-            # Fallback: build minimal version using vcpkg with fftw
-            Write-Host "Prebuilt not available, installing via vcpkg with fftw..."
-            cd C:/vcpkg
-            ./vcpkg install fftw3:x64-windows-static
-            ./vcpkg install rubberband:x64-windows-static --no-print-usage
-          }
+          echo "=== Rubberband includes ==="
+          Get-ChildItem "C:/vcpkg/installed/x64-windows-static/include" -Recurse -Filter "*rubber*" | Select-Object FullName
+          echo "=== Rubberband libs ==="
+          Get-ChildItem "C:/vcpkg/installed/x64-windows-static/lib" -Filter "*rubber*" | Select-Object FullName
+          echo "=== Share/cmake for rubberband ==="
+          Get-ChildItem "C:/vcpkg/installed/x64-windows-static/share" -Recurse -Filter "*rubber*" | Select-Object FullName
 
       - name: Configure CMake
         shell: pwsh
@@ -43,7 +37,8 @@ jobs:
           cmake -B build audio_engine `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            --debug-find 2>&1 | Select-String -Pattern "rubberband|sndfile|error|Error" | Select-Object -First 40
 
       - name: Build
         shell: pwsh
