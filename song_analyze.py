@@ -1,15 +1,11 @@
 """
 Analyze the source song:
-- Separate vocals with Demucs
-- Run Groq Whisper on vocals for word timestamps
-- Extract melody (F0) with aubio/numpy for target notes per word
+- Run Groq Whisper on full mix for word timestamps
+- Extract melody (F0) with aubio for target notes per word
 """
 
 import os
-import subprocess
-import json
 import math
-import tempfile
 import numpy as np
 import soundfile as sf
 import requests
@@ -17,37 +13,16 @@ import requests
 
 def hz_to_midi(hz):
     if hz <= 0:
-        return 60  # default to middle C
+        return 60
     return int(round(69 + 12 * math.log2(hz / 440.0)))
 
 
-def separate_vocals(song_path, temp_dir):
-    """Use Demucs to isolate vocals from the song."""
-    print("  Separating vocals with Demucs (this takes a few minutes)...")
-    result = subprocess.run(
-        ["python", "-m", "demucs", "--two-stems=vocals", "-o", temp_dir, song_path],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print("  Demucs failed, using full mix for melody extraction")
-        return song_path
-
-    # Demucs outputs to temp_dir/htdemucs/<song_name>/vocals.wav
-    song_name = os.path.splitext(os.path.basename(song_path))[0]
-    vocals_path = os.path.join(temp_dir, "htdemucs", song_name, "vocals.wav")
-    if os.path.exists(vocals_path):
-        print("  Vocals separated successfully")
-        return vocals_path
-    return song_path
-
-
 def extract_melody(audio_path):
-    """Extract F0 (fundamental frequency) over time using numpy zero-crossing."""
+    """Extract F0 over time using aubio if available, else fallback."""
     audio, sr = sf.read(audio_path)
     if audio.ndim > 1:
-        audio = audio.mean(axis=1)  # mono
+        audio = audio.mean(axis=1)
 
-    # Use aubio if available, otherwise fallback to simple autocorrelation
     try:
         import aubio
         hop_size = 512
@@ -69,12 +44,10 @@ def extract_melody(audio_path):
         return times, pitches, sr
 
     except ImportError:
-        # Simple fallback: fixed hop autocorrelation
         hop = 512
         times, pitches = [], []
         for i in range(0, len(audio) - 2048, hop):
             frame = audio[i:i+2048]
-            # Zero crossing rate as rough pitch proxy
             zc = np.sum(np.diff(np.sign(frame)) != 0)
             freq = (zc / 2) * (sr / 2048)
             times.append(i / sr)
@@ -83,21 +56,21 @@ def extract_melody(audio_path):
 
 
 def get_pitch_at_time(times, pitches, t):
-    """Get the pitch in Hz closest to time t."""
     if not times:
         return 220.0
     idx = min(range(len(times)), key=lambda i: abs(times[i] - t))
-    return pitches[idx]
+    hz = pitches[idx]
+    return hz if hz > 50 else 220.0
 
 
-def transcribe_song(vocals_path, groq_api_key):
-    """Run Groq Whisper on the vocal track to get word timestamps."""
+def transcribe_song(audio_path, groq_api_key):
+    """Run Groq Whisper on the song to get word timestamps."""
     print("  Transcribing song with Groq Whisper...")
-    with open(vocals_path, "rb") as f:
+    with open(audio_path, "rb") as f:
         response = requests.post(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {groq_api_key}"},
-            files={"file": (os.path.basename(vocals_path), f, "audio/wav")},
+            files={"file": (os.path.basename(audio_path), f, "audio/mpeg")},
             data={
                 "model": "whisper-large-v3",
                 "response_format": "verbose_json",
@@ -115,24 +88,24 @@ def analyze_song(song_path, groq_api_key, temp_dir):
     Returns a list of dicts:
     {word, time_in_song, duration, target_hz, target_midi}
     """
-    vocals_path = separate_vocals(song_path, temp_dir)
-    transcript = transcribe_song(vocals_path, groq_api_key)
-    melody_times, melody_pitches, sr = extract_melody(vocals_path)
+    print("  Extracting melody from song...")
+    melody_times, melody_pitches, sr = extract_melody(song_path)
+
+    transcript = transcribe_song(song_path, groq_api_key)
 
     word_data = []
-    words = transcript.get("words", [])
-    for i, w in enumerate(words):
+    for w in transcript.get("words", []):
         t = w["start"]
         dur = w["end"] - w["start"]
         hz = get_pitch_at_time(melody_times, melody_pitches, t + dur / 2)
         midi = hz_to_midi(hz)
         word_data.append({
-            "word": w["word"].strip().lower().replace(",", "").replace(".", ""),
+            "word": w["word"].strip().lower().replace(",", "").replace(".", "").replace("'", ""),
             "time_in_song": t,
             "duration": dur,
             "target_hz": hz,
             "target_midi": midi
         })
 
+    print(f"  Got {len(word_data)} words from song")
     return word_data
-
