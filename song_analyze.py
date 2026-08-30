@@ -74,7 +74,7 @@ def transcribe_song(audio_path, groq_api_key):
             data={
                 "model": "whisper-large-v3",
                 "response_format": "verbose_json",
-                "timestamp_granularities": "word",
+                "response_format": "verbose_json",
                 "language": "en"
             }
         )
