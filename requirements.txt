@@ -3,7 +3,6 @@ groq
 requests
 soundfile
 numpy
-demucs
 tqdm
 colorama
-
+aubio
