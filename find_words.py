@@ -11,16 +11,12 @@ from collections import defaultdict
 def parse_vtt_words(vtt_path):
     """
     Parse a .vtt file and return list of (word, start_seconds, end_seconds).
-    Handles both line-level and word-level timestamps.
     """
     entries = []
     with open(vtt_path, encoding="utf-8", errors="ignore") as f:
         content = f.read()
 
-    # Split into cue blocks
-    blocks = re.split(r"
-
-+", content)
+    blocks = re.split(r"\n\n+", content)
     time_pattern = re.compile(
         r"(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})"
     )
@@ -42,7 +38,6 @@ def parse_vtt_words(vtt_path):
         start = to_sec(*ts_line.groups()[:4])
         end = to_sec(*ts_line.groups()[4:])
 
-        # Get text lines (skip the timestamp line and cue ID)
         text_lines = []
         past_ts = False
         for line in lines:
@@ -50,7 +45,6 @@ def parse_vtt_words(vtt_path):
                 past_ts = True
                 continue
             if past_ts:
-                # Strip HTML tags from auto-subs
                 clean = re.sub(r"<[^>]+>", "", line).strip()
                 if clean:
                     text_lines.append(clean)
@@ -60,7 +54,6 @@ def parse_vtt_words(vtt_path):
         if not words:
             continue
 
-        # Distribute timestamp evenly across words
         dur = (end - start) / len(words)
         for i, word in enumerate(words):
             entries.append((word.lower(), start + i * dur, start + (i+1) * dur))
@@ -73,7 +66,6 @@ def find_words_in_subs(target_words, sub_index):
     For each target word, find the best occurrence across all subtitle files.
     Returns dict: {word: {video_id, start, end, vtt_path}}
     """
-    # Build inverted index: word -> list of (video_id, start, end)
     print("  Building word index from subtitles...")
     word_index = defaultdict(list)
 
@@ -87,15 +79,13 @@ def find_words_in_subs(target_words, sub_index):
                     "end": end,
                     "vtt_path": vtt_path
                 })
-        except Exception as e:
-            pass  # Skip broken vtt files
+        except Exception:
+            pass
 
-    # Match each target word
     hits = {}
     missing = []
     for word in target_words:
         if word in word_index and word_index[word]:
-            # Pick the hit where the word is most isolated (longest duration)
             best = max(word_index[word], key=lambda x: x["end"] - x["start"])
             hits[word] = best
         else:
@@ -106,4 +96,3 @@ def find_words_in_subs(target_words, sub_index):
 
     print(f"  Matched {len(hits)}/{len(target_words)} words")
     return hits
-
