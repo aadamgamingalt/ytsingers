@@ -28,7 +28,7 @@ def transcribe_clip(clip_path, groq_api_key, target_word):
             data={
                 "model": "whisper-large-v3",
                 "response_format": "verbose_json",
-                "timestamp_granularities": "word",
+                "timestamp_granularities[]": "word",
                 "language": "en"
             }
         )
