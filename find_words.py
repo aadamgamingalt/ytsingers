@@ -7,6 +7,11 @@ import re
 import os
 
 
+def clean_word(w):
+    """Lowercase, strip punctuation and apostrophes."""
+    return re.sub(r"[^a-z]", "", w.lower())
+
+
 def parse_vtt_words(vtt_path):
     entries = []
     time_pattern = re.compile(
@@ -31,13 +36,14 @@ def parse_vtt_words(vtt_path):
                 in_cue = True
                 continue
             if in_cue and line and not line.isdigit():
-                clean = re.sub(r"<[^>]+>", "", line).strip()
-                words = re.findall(r"[a-zA-Z]+", clean)
+                clean_line = re.sub(r"<[^>]+>", "", line).strip()
+                raw_words = re.findall(r"[a-zA-Z']+", clean_line)
+                words = [clean_word(w) for w in raw_words if clean_word(w)]
                 if words:
                     dur = (current_end - current_start) / len(words)
                     for i, word in enumerate(words):
                         entries.append((
-                            word.lower(),
+                            word,
                             current_start + i * dur,
                             current_start + (i+1) * dur
                         ))
@@ -49,8 +55,8 @@ def parse_vtt_words(vtt_path):
 
 
 def find_words_in_subs(target_words, sub_index):
-    target_set = set(target_words)
-    # best hit per word: pick longest duration occurrence
+    # Clean target words the same way
+    target_set = set(clean_word(w) for w in target_words if clean_word(w))
     hits = {}
 
     print(f"  Searching {len(sub_index)} subtitle files...")
@@ -71,8 +77,8 @@ def find_words_in_subs(target_words, sub_index):
         except Exception:
             pass
 
-    missing = [w for w in target_words if w not in hits]
+    missing = [w for w in target_set if w not in hits]
     if missing:
-        print(f"  WARNING: Could not find: {missing}")
+        print(f"  WARNING: Could not find: {sorted(missing)}")
     print(f"  Matched {len(hits)}/{len(target_set)} unique words")
     return hits
